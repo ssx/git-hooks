@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#
+# Check: no die() calls
+# Scope: php
+
+tmp="$1"
+src="$2"
+
+if matches=$(grep -nE '\bdie[[:space:]]*\(' "$tmp" 2>/dev/null); then
+  printf '%s\n' "$matches" | sed "s|^|        $src:|"
+  exit 1
+fi
+
+exit 0

@@ -1,84 +1,57 @@
 #!/usr/bin/env bash
 #
-# pre-commit hook: PHP file quality checks
-# Runs against all staged .php / .phtml files.
+# pre-commit runner
 #
+# Discovers check scripts from pre-commit.d/<scope>/ and runs them against
+# staged files. Each file's extension is resolved to a scope via EXT_MAP.
+#
+# ── Extension → scope mapping ─────────────────────────────────────────────────
+# Maps a file extension to a scope directory under pre-commit.d/.
+# Format: "extension:scope"
+#
+# Files whose extension is not listed here only run "all" checks.
+# A scope directory doesn't need to exist — it's silently skipped.
+#
+EXT_MAP=(
+  "php:php"
+  "phtml:php"     # Magento/PHP templates treated as PHP
+# "ts:js"         # example: TypeScript runs js/ checks
+# "scss:css"      # example: SCSS runs css/ checks
+)
+
 # ── Adding a new check ────────────────────────────────────────────────────────
-# 1. Define a function with the signature:
-#
-#      check_<name>() {
-#        local tmp="$1"   # path to temp file holding the staged file content
-#        local src="$2"   # original repo-relative path (use this in output)
-#        ...
-#        return 0  # pass
-#        return 1  # fail — print detail lines before returning
-#      }
-#
-# 2. Add the function name to PHP_CHECKS below.
+# 1. Create an executable script in pre-commit.d/<scope>/
+#    - pre-commit.d/all/   → runs on every staged file
+#    - pre-commit.d/<scope>/ → runs on files whose extension maps to <scope>
+# 2. Name it NN-description (e.g. 05-no-exit) — NN controls run order.
+# 3. Interface:
+#      $1  path to temp file containing the staged file content
+#      $2  original repo-relative file path (use this in error output)
+#    Print error detail to stdout. Exit 1 on failure, 0 on pass.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Checks ───────────────────────────────────────────────────────────────────
+HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
+CHECKS_DIR="$HOOKS_DIR/pre-commit.d"
 
-check_php_syntax() {
-  local tmp="$1" src="$2" out
-  if ! out=$(php -l "$tmp" 2>&1); then
-    # Replace the temp path with the real path in php's output
-    printf '%s\n' "${out//$tmp/$src}" | sed 's/^/        /'
-    return 1
-  fi
+# Resolve a file extension to its mapped scope. Prints the scope and returns 0
+# on success, prints nothing and returns 1 if no mapping exists.
+get_scope() {
+  local ext="$1" entry
+  for entry in "${EXT_MAP[@]}"; do
+    if [ "${entry%%:*}" = "$ext" ]; then
+      printf '%s' "${entry#*:}"
+      return 0
+    fi
+  done
+  return 1
 }
-
-check_no_die() {
-  local tmp="$1" src="$2" matches
-  if matches=$(grep -nE '\bdie[[:space:]]*\(' "$tmp" 2>/dev/null); then
-    printf '%s\n' "$matches" | sed "s|^|        $src:|"
-    return 1
-  fi
-}
-
-check_no_var_dump() {
-  local tmp="$1" src="$2" matches
-  if matches=$(grep -nE '\bvar_dump[[:space:]]*\(' "$tmp" 2>/dev/null); then
-    printf '%s\n' "$matches" | sed "s|^|        $src:|"
-    return 1
-  fi
-}
-
-check_no_print_r() {
-  local tmp="$1" src="$2" matches
-  if matches=$(grep -nE '\bprint_r[[:space:]]*\(' "$tmp" 2>/dev/null); then
-    printf '%s\n' "$matches" | sed "s|^|        $src:|"
-    return 1
-  fi
-}
-
-# ── Register checks ───────────────────────────────────────────────────────────
-# Add, remove, or reorder function names to control which checks run and in
-# what order. The function name (minus the "check_" prefix) is used as the
-# label in failure output.
-
-PHP_CHECKS=(
-  check_php_syntax
-  check_no_die
-  check_no_var_dump
-  check_no_print_r
-)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-if ! command -v php &>/dev/null; then
-  echo "pre-commit: 'php' not found in PATH — skipping PHP checks." >&2
-  exit 0
-fi
+all_staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null) || true
+[ -z "$all_staged" ] && exit 0
 
-# Collect staged .php / .phtml files; skip deleted files
-staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null \
-         | grep -E '\.(php|phtml)$') || true
-
-[ -z "$staged" ] && exit 0
-
-# Temp dir cleaned up on exit
-tmpdir=$(mktemp -d /tmp/pre-commit-php-XXXXXX)
+tmpdir=$(mktemp -d /tmp/pre-commit-XXXXXX)
 trap 'rm -rf "$tmpdir"' EXIT
 
 hook_failed=0
@@ -86,32 +59,46 @@ counter=0
 
 while IFS= read -r file; do
   counter=$((counter + 1))
-  tmp="$tmpdir/$counter.php"
-
-  # Check against the staged version, not the working-tree version
+  tmp="$tmpdir/$counter"
   git show ":$file" > "$tmp"
+
+  ext="${file##*.}"
+  scope=$(get_scope "$ext") || scope=""
+
+  # Build the list of scope dirs that apply to this file
+  scope_dirs=("$CHECKS_DIR/all")
+  if [ -n "$scope" ] && [ -d "$CHECKS_DIR/$scope" ]; then
+    scope_dirs=("${scope_dirs[@]}" "$CHECKS_DIR/$scope")
+  fi
 
   file_header_shown=0
 
-  for check in "${PHP_CHECKS[@]}"; do
-    label="${check#check_}"   # strip "check_" prefix
-    label="${label//_/ }"     # underscores → spaces
+  for scope_dir in "${scope_dirs[@]}"; do
+    [ -d "$scope_dir" ] || continue
 
-    output=$("$check" "$tmp" "$file" 2>&1)
-    status=$?
+    for check in "$scope_dir"/*; do
+      [ -f "$check" ] && [ -x "$check" ] || continue
 
-    if [ "$status" -ne 0 ]; then
-      if [ "$file_header_shown" -eq 0 ]; then
-        printf '\n    %s\n' "$file"
-        file_header_shown=1
+      # Derive a readable label from the filename (strip NN- prefix and dashes)
+      label=$(basename "$check" | sed 's/^[0-9]*-//')
+      label="${label//-/ }"
+
+      output=$("$check" "$tmp" "$file" 2>&1)
+      status=$?
+
+      if [ "$status" -ne 0 ]; then
+        if [ "$file_header_shown" -eq 0 ]; then
+          printf '\n    %s\n' "$file"
+          file_header_shown=1
+        fi
+        printf '      [FAIL] %s\n' "$label"
+        [ -n "$output" ] && printf '%s\n' "$output"
+        hook_failed=1
       fi
-      printf '      [FAIL] %s\n' "$label"
-      [ -n "$output" ] && printf '%s\n' "$output"
-      hook_failed=1
-    fi
+    done
   done
 
-done <<< "$staged"
+done <<< "$all_staged"
 
 if [ "$hook_failed" -ne 0 ]; then
   printf '\n  Pre-commit checks failed. Fix the issues above before committing.\n\n'

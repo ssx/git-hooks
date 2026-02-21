@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#
+# Check: PHP syntax is valid
+# Scope: php
+
+tmp="$1"
+src="$2"
+
+if ! command -v php &>/dev/null; then
+  printf '        warning: php not found in PATH — skipping syntax check\n' >&2
+  exit 0
+fi
+
+if ! out=$(php -l "$tmp" 2>&1); then
+  printf '%s\n' "${out//$tmp/$src}" | sed 's/^/        /'
+  exit 1
+fi
+
+exit 0
