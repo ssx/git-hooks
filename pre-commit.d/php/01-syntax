@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# Repository : https://github.com/ssx/git-hooks
+# Author     : https://github.com/ssx
+# License    : Provided as-is with no warranty. Use at your own risk.
+# ─────────────────────────────────────────────────────────────────────────────
 #
 # Check: PHP syntax is valid
 # Scope: php
