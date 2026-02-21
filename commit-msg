@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 # Repository : https://github.com/ssx/git-hooks
-# Author     : https://github.com/ssx
-# License    : Provided as-is with no warranty. Use at your own risk.
+# Author     : Scott Robinson (https://github.com/ssx)
+# License    : MIT — see LICENSE for details
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # commit-msg hook: Validates Conventional Commits format
