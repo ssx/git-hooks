@@ -31,6 +31,7 @@ git-hooks/
   pre-commit.d/
     all/                           # Runs on every staged file
       01-conflict-markers
+      02-newline-at-eof
     php/                           # Runs on .php and .phtml files (see EXT_MAP)
       01-syntax
       02-no-die
