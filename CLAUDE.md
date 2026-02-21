@@ -3,8 +3,8 @@
 ## README
 
 Always update README.md when making any of the following changes:
-- Adding, modifying, or removing a check script
-- Adding or removing a scope directory
+- Adding, modifying, or removing a check script — update both the structure tree and the checks table
+- Adding or removing a scope directory — update the structure tree
 - Changing EXT_MAP entries in `pre-commit`
 - Changing the commit-msg validation rules
 
