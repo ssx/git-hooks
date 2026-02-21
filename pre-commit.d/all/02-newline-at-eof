@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# Repository : https://github.com/ssx/git-hooks
+# Author     : Scott Robinson (https://github.com/ssx)
+# License    : MIT — see LICENSE for details
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Check: file must end with a newline
+# Scope: all staged files (empty and binary files are skipped)
+
+tmp="$1"
+src="$2"
+
+# Skip empty files
+[ -s "$tmp" ] || exit 0
+
+# Skip binary files (-I treats binary as non-matching; empty pattern always
+# matches text files, so a non-zero exit means the file is binary)
+grep -qI '' "$tmp" 2>/dev/null || exit 0
+
+# Read the last byte as hex. A newline is 0a.
+last=$(tail -c 1 "$tmp" | od -An -tx1 | tr -d ' \n')
+
+if [ "$last" != "0a" ]; then
+  printf '        %s: no newline at end of file\n' "$src"
+  exit 1
+fi
+
+exit 0

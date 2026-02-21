@@ -91,6 +91,7 @@ These run against every staged file regardless of type. Binary files are skipped
 | Script | What it checks |
 |--------|---------------|
 | `all/01-conflict-markers` | Blocks commits containing unresolved Git merge conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) |
+| `all/02-newline-at-eof` | Ensures every text file ends with a newline. Empty and binary files are skipped automatically |
 
 ### PHP / PHTML
 
