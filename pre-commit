@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+#
+# pre-commit hook: PHP file quality checks
+# Runs against all staged .php / .phtml files.
+#
+# ── Adding a new check ────────────────────────────────────────────────────────
+# 1. Define a function with the signature:
+#
+#      check_<name>() {
+#        local tmp="$1"   # path to temp file holding the staged file content
+#        local src="$2"   # original repo-relative path (use this in output)
+#        ...
+#        return 0  # pass
+#        return 1  # fail — print detail lines before returning
+#      }
+#
+# 2. Add the function name to PHP_CHECKS below.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Checks ───────────────────────────────────────────────────────────────────
+
+check_php_syntax() {
+  local tmp="$1" src="$2" out
+  if ! out=$(php -l "$tmp" 2>&1); then
+    # Replace the temp path with the real path in php's output
+    printf '%s\n' "${out//$tmp/$src}" | sed 's/^/        /'
+    return 1
+  fi
+}
+
+check_no_die() {
+  local tmp="$1" src="$2" matches
+  if matches=$(grep -nE '\bdie[[:space:]]*\(' "$tmp" 2>/dev/null); then
+    printf '%s\n' "$matches" | sed "s|^|        $src:|"
+    return 1
+  fi
+}
+
+check_no_var_dump() {
+  local tmp="$1" src="$2" matches
+  if matches=$(grep -nE '\bvar_dump[[:space:]]*\(' "$tmp" 2>/dev/null); then
+    printf '%s\n' "$matches" | sed "s|^|        $src:|"
+    return 1
+  fi
+}
+
+check_no_print_r() {
+  local tmp="$1" src="$2" matches
+  if matches=$(grep -nE '\bprint_r[[:space:]]*\(' "$tmp" 2>/dev/null); then
+    printf '%s\n' "$matches" | sed "s|^|        $src:|"
+    return 1
+  fi
+}
+
+# ── Register checks ───────────────────────────────────────────────────────────
+# Add, remove, or reorder function names to control which checks run and in
+# what order. The function name (minus the "check_" prefix) is used as the
+# label in failure output.
+
+PHP_CHECKS=(
+  check_php_syntax
+  check_no_die
+  check_no_var_dump
+  check_no_print_r
+)
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+if ! command -v php &>/dev/null; then
+  echo "pre-commit: 'php' not found in PATH — skipping PHP checks." >&2
+  exit 0
+fi
+
+# Collect staged .php / .phtml files; skip deleted files
+staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null \
+         | grep -E '\.(php|phtml)$') || true
+
+[ -z "$staged" ] && exit 0
+
+# Temp dir cleaned up on exit
+tmpdir=$(mktemp -d /tmp/pre-commit-php-XXXXXX)
+trap 'rm -rf "$tmpdir"' EXIT
+
+hook_failed=0
+counter=0
+
+while IFS= read -r file; do
+  counter=$((counter + 1))
+  tmp="$tmpdir/$counter.php"
+
+  # Check against the staged version, not the working-tree version
+  git show ":$file" > "$tmp"
+
+  file_header_shown=0
+
+  for check in "${PHP_CHECKS[@]}"; do
+    label="${check#check_}"   # strip "check_" prefix
+    label="${label//_/ }"     # underscores → spaces
+
+    output=$("$check" "$tmp" "$file" 2>&1)
+    status=$?
+
+    if [ "$status" -ne 0 ]; then
+      if [ "$file_header_shown" -eq 0 ]; then
+        printf '\n    %s\n' "$file"
+        file_header_shown=1
+      fi
+      printf '      [FAIL] %s\n' "$label"
+      [ -n "$output" ] && printf '%s\n' "$output"
+      hook_failed=1
+    fi
+  done
+
+done <<< "$staged"
+
+if [ "$hook_failed" -ne 0 ]; then
+  printf '\n  Pre-commit checks failed. Fix the issues above before committing.\n\n'
+  exit 1
+fi
+
+exit 0
