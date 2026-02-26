@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# Repository : https://github.com/ssx/git-hooks
+# Author     : Scott Robinson (https://github.com/ssx)
+# License    : MIT — see LICENSE for details
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Check: no ray() calls
+# Scope: php
+
+tmp="$1"
+src="$2"
+
+if matches=$(grep -nE '\bray[[:space:]]*\(' "$tmp" 2>/dev/null); then
+  printf '%s\n' "$matches" | sed "s|^|        $src:|"
+  exit 1
+fi
+
+exit 0

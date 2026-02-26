@@ -37,6 +37,7 @@ git-hooks/
       02-no-die
       03-no-var-dump
       04-no-print-r
+      05-no-ray
 ```
 
 ---
@@ -104,6 +105,7 @@ These run against `.php` and `.phtml` files (controlled by `EXT_MAP` in `pre-com
 | `php/02-no-die` | Blocks `die()` calls |
 | `php/03-no-var-dump` | Blocks `var_dump()` calls |
 | `php/04-no-print-r` | Blocks `print_r()` calls |
+| `php/05-no-ray` | Blocks `ray()` calls |
 
 ---
 
